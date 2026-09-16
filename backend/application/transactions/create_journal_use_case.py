@@ -1,4 +1,4 @@
-"""Use-case: buat jurnal double-entry dengan validasi ketat multi-tenant."""
+"""Use-case: buat jurnal double-entry + audit log."""
 from __future__ import annotations
 
 from datetime import date
@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.services.audit_log_service import AuditLogService
 from infrastructure.repositories.account_repository import AccountRepository
 from infrastructure.repositories.transaction_repository import TransactionRepository
 
@@ -20,6 +21,7 @@ class CreateJournalUseCase:
         self.session = session
         self.trx_repo = TransactionRepository(session)
         self.acc_repo = AccountRepository(session)
+        self.audit = AuditLogService(session)
 
     async def execute(
         self,
@@ -27,12 +29,13 @@ class CreateJournalUseCase:
         trx_date: date,
         keterangan: str,
         unit_usaha_id: Optional[str],
-        unit_group: str,  # BUMDES | UU01..UU06 — tenant isolation key
-        lines: list[dict],  # [{account_code, debit, kredit, description?}]
+        unit_group: str,
+        lines: list[dict],
         nomor_bukti: str = "",
         transaction_type: str = "",
         mitra_id: Optional[str] = None,
         created_by: Optional[str] = None,
+        ip_address: Optional[str] = None,
     ):
         if not lines or len(lines) < 2:
             raise JournalValidationError("Jurnal minimal 2 baris (debit & kredit)")
@@ -60,7 +63,6 @@ class CreateJournalUseCase:
         if total_d == 0:
             raise JournalValidationError("Total nominal tidak boleh 0")
 
-        # Tenant isolation: akun harus milik group/unit yang sama
         acc_map = await self.acc_repo.map_by_codes(codes, group=unit_group)
         resolved = []
         for ln in lines:
@@ -70,7 +72,6 @@ class CreateJournalUseCase:
                 raise JournalValidationError(
                     f"Akun '{code}' tidak ditemukan atau bukan milik group '{unit_group}'"
                 )
-            # Extra guard: jika account punya unit_usaha_id, harus cocok
             if acc.unit_usaha_id and unit_usaha_id and acc.unit_usaha_id != unit_usaha_id:
                 raise JournalValidationError(
                     f"Akun '{code}' tidak boleh dipakai unit usaha lain"
@@ -84,7 +85,7 @@ class CreateJournalUseCase:
                 }
             )
 
-        return await self.trx_repo.create(
+        trx = await self.trx_repo.create(
             trx_date=trx_date,
             keterangan=keterangan,
             unit_usaha_id=unit_usaha_id,
@@ -94,3 +95,20 @@ class CreateJournalUseCase:
             mitra_id=mitra_id,
             created_by=created_by,
         )
+
+        await self.audit.record(
+            action="journal.create",
+            user_id=created_by,
+            ip_address=ip_address,
+            payload_before=None,
+            payload_after={
+                "transaction_id": trx.id,
+                "date": str(trx_date),
+                "keterangan": keterangan,
+                "unit_usaha_id": unit_usaha_id,
+                "unit_group": unit_group,
+                "total": str(total_d),
+                "lines": lines,
+            },
+        )
+        return trx
