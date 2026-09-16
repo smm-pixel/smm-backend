@@ -1,0 +1,107 @@
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { useAuth, can } from "@/lib/auth";
+import { ROLE_LABELS } from "@/lib/api";
+import {
+  House, Receipt, ChartLine, ChartBar, Storefront, UsersThree,
+  BookOpenText, SignOut, List, X, Books, Calculator, UserCircle,
+} from "@phosphor-icons/react";
+
+const READ_ONLY = ["admin", "direktur", "bendahara", "pengawas", "penasihat"];
+const READ_MOST = ["admin", "direktur", "bendahara", "pengelola", "pengawas", "penasihat"];
+
+const NAV = [
+  { to: "/dashboard", label: "Dashboard", icon: House, roles: READ_MOST },
+  { to: "/transactions", label: "Transaksi", icon: Receipt, roles: READ_MOST },
+  { to: "/reports", label: "Laporan Keuangan", icon: ChartLine, roles: READ_MOST },
+  { to: "/ledger", label: "Buku Besar", icon: BookOpenText, roles: READ_MOST },
+  { to: "/accounts", label: "Kode Akun (COA)", icon: Books, roles: READ_ONLY },
+  { to: "/users", label: "Kelola Pengguna", icon: UsersThree, roles: ["admin"] },
+  { to: "/profile", label: "Profil Saya", icon: UserCircle, roles: READ_MOST },
+];
+
+export default function Layout({ children }) {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+
+  if (!user) return null;
+  const visible = NAV.filter(n => can(user, ...n.roles));
+
+  return (
+    <div className="min-h-screen flex" style={{ background: "var(--bg)" }}>
+      {/* Mobile top bar */}
+      <div className="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14"
+           style={{ background: "white", borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2">
+          <img src="/logo-bumdes.webp" alt="Logo" className="w-8 h-8 rounded-full object-cover"
+               style={{ border: "1px solid var(--border)" }} />
+          <span className="font-heading font-bold text-sm">BUMDES Karya Raharja</span>
+        </div>
+        <button data-testid="mobile-menu-btn" onClick={() => setOpen(!open)} className="p-2">
+          {open ? <X size={22} /> : <List size={22} />}
+        </button>
+      </div>
+
+      {/* Sidebar */}
+      <aside
+        data-testid="sidebar"
+        className={`fixed lg:sticky top-0 left-0 h-[100dvh] w-72 z-50 flex flex-col overflow-hidden transform transition-transform lg:transform-none ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        style={{ background: "white", borderRight: "1px solid var(--border)" }}
+      >
+        <div className="p-6 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <img src="/logo-bumdes.webp" alt="Logo BUMDES" data-testid="sidebar-logo"
+               className="w-11 h-11 rounded-full object-cover"
+               style={{ background: "white", border: "1px solid var(--border)" }} />
+          <div>
+            <div className="font-heading font-bold text-base leading-tight">BUMDES</div>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>Karya Raharja</div>
+          </div>
+        </div>
+
+        <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
+          {visible.map((n) => {
+            const Icon = n.icon;
+            const active = location.pathname === n.to;
+            return (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                data-testid={`nav-${n.to.replace(/\//g, "-")}`}
+                onClick={() => setOpen(false)}
+                className={`side-link ${active ? "active" : ""}`}
+              >
+                <Icon size={20} weight={active ? "fill" : "regular"} />
+                <span>{n.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="shrink-0 p-4" style={{ borderTop: "1px solid var(--border)", background: "white" }}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center font-heading font-bold text-sm"
+                 style={{ background: "var(--secondary-blue)", color: "#3A5A7D" }}>
+              {user.name?.[0]?.toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">{user.name}</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>{ROLE_LABELS[user.role]}</div>
+            </div>
+          </div>
+          <button data-testid="logout-btn" onClick={logout} className="btn btn-outline w-full text-sm">
+            <SignOut size={16} /> Keluar
+          </button>
+        </div>
+      </aside>
+
+      {open && <div className="lg:hidden fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />}
+
+      <main className="flex-1 min-w-0 pt-14 lg:pt-0">
+        <div className="p-4 sm:p-6 lg:p-10 max-w-[1400px] mx-auto fade-in">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
