@@ -1,0 +1,1 @@
+import{r as e}from"./index-XL-RdBZS.js";var t=(t,n={})=>{let r=typeof t==`string`?t:`Terjadi kesalahan.`,{type:i=`default`,...a}=n;return e[i]?.(r,a)||e(r,a)};export{t};
