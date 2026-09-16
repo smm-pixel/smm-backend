@@ -36,14 +36,11 @@ class Base(DeclarativeBase):
     pass
 
 
-# ─── Master Data ─────────────────────────────────────────────────────────────
-
 class UnitUsaha(Base):
-    """Pusat (BUMDES) + 6 unit usaha. Multi-tenant root."""
     __tablename__ = "unit_usaha"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)  # BUMDES, UU01..UU06
+    code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     revenue_scheme: Mapped[str] = mapped_column(Text, default="")
@@ -63,7 +60,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(120), default="")
-    role: Mapped[str] = mapped_column(String(30), nullable=False)  # admin|direktur|bendahara|pengelola|pengawas|penasihat
+    role: Mapped[str] = mapped_column(String(30), nullable=False)
     unit_usaha_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("unit_usaha.id", ondelete="SET NULL"), nullable=True
     )
@@ -76,17 +73,16 @@ class User(Base):
 
 
 class Account(Base):
-    """Chart of Accounts — Kepmendesa PDTT 136/2022. Unique (code, group)."""
     __tablename__ = "accounts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    code: Mapped[str] = mapped_column(String(30), nullable=False)  # e.g. 1.1.01.01
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(30), nullable=False)  # aset|kewajiban|ekuitas|pendapatan|beban
+    category: Mapped[str] = mapped_column(String(30), nullable=False)
     subcategory: Mapped[str] = mapped_column(String(50), default="")
-    normal_balance: Mapped[str] = mapped_column(String(10), nullable=False)  # debit|kredit
+    normal_balance: Mapped[str] = mapped_column(String(10), nullable=False)
     parent_code: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    group: Mapped[str] = mapped_column(String(10), nullable=False, default="BUMDES")  # BUMDES|UU01..UU06
+    group: Mapped[str] = mapped_column(String(10), nullable=False, default="BUMDES")
     unit_usaha_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("unit_usaha.id", ondelete="SET NULL"), nullable=True
     )
@@ -130,10 +126,7 @@ class Mitra(Base):
     __table_args__ = (Index("ix_mitra_unit_usaha_id", "unit_usaha_id"),)
 
 
-# ─── Double-Entry Transactions ───────────────────────────────────────────────
-
 class Transaction(Base):
-    """Header jurnal. Satu transaksi = N baris debit/kredit yang seimbang."""
     __tablename__ = "transactions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -168,7 +161,6 @@ class Transaction(Base):
 
 
 class TransactionLine(Base):
-    """Baris jurnal (debit ATAU kredit). Jumlah debit = jumlah kredit per header."""
     __tablename__ = "transaction_lines"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -183,7 +175,7 @@ class TransactionLine(Base):
     description: Mapped[str] = mapped_column(String(255), default="")
 
     transaction: Mapped["Transaction"] = relationship(back_populates="lines")
-    account: Mapped["Account"] = relationship(back_populates="account")
+    account: Mapped["Account"] = relationship(back_populates="lines")
 
     __table_args__ = (
         Index("ix_transaction_lines_transaction_id", "transaction_id"),
@@ -195,8 +187,6 @@ class TransactionLine(Base):
         ),
     )
 
-
-# ─── Bukti Transaksi (Google Drive) ──────────────────────────────────────────
 
 class BuktiTransaksi(Base):
     __tablename__ = "bukti_transaksi"
@@ -215,13 +205,11 @@ class BuktiTransaksi(Base):
     __table_args__ = (Index("ix_bukti_transaction_id", "transaction_id"),)
 
 
-# ─── Revenue Share & Period ──────────────────────────────────────────────────
-
 class RevenueShare(Base):
     __tablename__ = "revenue_shares"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    period: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
     unit_usaha_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("unit_usaha.id", ondelete="CASCADE"), nullable=False
     )
@@ -233,7 +221,7 @@ class RevenueShare(Base):
     manager_user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)  # draft|disetor
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     settled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
@@ -244,29 +232,25 @@ class RevenueShare(Base):
 
 
 class Period(Base):
-    """Penutupan periode akuntansi."""
     __tablename__ = "periods"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    period: Mapped[str] = mapped_column(String(7), unique=True, nullable=False)  # YYYY-MM
-    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # open|closed
+    period: Mapped[str] = mapped_column(String(7), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
 
-# ─── Audit Log ───────────────────────────────────────────────────────────────
-
 class AuditLog(Base):
-    """Jejak aktivitas kritis (jurnal create/update, dll)."""
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    action: Mapped[str] = mapped_column(String(80), nullable=False)  # e.g. journal.create
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     payload_before: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
