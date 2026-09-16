@@ -183,7 +183,7 @@ class TransactionLine(Base):
     description: Mapped[str] = mapped_column(String(255), default="")
 
     transaction: Mapped["Transaction"] = relationship(back_populates="lines")
-    account: Mapped["Account"] = relationship(back_populates="lines")
+    account: Mapped["Account"] = relationship(back_populates="account")
 
     __table_args__ = (
         Index("ix_transaction_lines_transaction_id", "transaction_id"),
@@ -215,7 +215,7 @@ class BuktiTransaksi(Base):
     __table_args__ = (Index("ix_bukti_transaction_id", "transaction_id"),)
 
 
-# ─── Revenue Share & Period (opsional, mendukung workflow existing) ──────────
+# ─── Revenue Share & Period ──────────────────────────────────────────────────
 
 class RevenueShare(Base):
     __tablename__ = "revenue_shares"
@@ -253,4 +253,27 @@ class Period(Base):
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_by: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+# ─── Audit Log ───────────────────────────────────────────────────────────────
+
+class AuditLog(Base):
+    """Jejak aktivitas kritis (jurnal create/update, dll)."""
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(80), nullable=False)  # e.g. journal.create
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    payload_before: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payload_after: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_audit_logs_user_id", "user_id"),
+        Index("ix_audit_logs_action", "action"),
+        Index("ix_audit_logs_timestamp", "timestamp"),
     )
