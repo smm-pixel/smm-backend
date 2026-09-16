@@ -1,0 +1,14 @@
+{
+  "name": "bumdes-karya-rahjaha-monorepo",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "yarn --cwd frontend dev",
+    "build:frontend": "yarn --cwd frontend build",
+    "lint:frontend": "yarn --cwd frontend lint",
+    "test:backend": "cd backend && python -m pytest -q",
+    "check": "yarn build:frontend && yarn test:backend"
+  },
+  "dependencies": {
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

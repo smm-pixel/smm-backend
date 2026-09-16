@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bumdes
+      POSTGRES_PASSWORD: bumdes_pass
+      POSTGRES_DB: bumdes
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bumdes"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: python:3.11-slim
+    working_dir: /app/backend
+    volumes:
+      - ./:/app
+      - pip_cache:/root/.cache/pip
+    environment:
+      - DATABASE_URL=postgresql://bumdes:bumdes_pass@db:5432/bumdes
+      - DATABASE_SSL=disable
+      - CORS_ORIGINS=https://3000-${BASE44_PUBLIC_HOST_SUFFIX},https://3001-${BASE44_PUBLIC_HOST_SUFFIX},http://localhost:3000,http://localhost:5174
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  frontend:
+    image: node:20
+    working_dir: /app/frontend
+    volumes:
+      - ./:/app
+    environment:
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: sh -c "yarn install && yarn start"
+
+  frontend-stok:
+    image: node:20
+    working_dir: /app/frontend-stok
+    volumes:
+      - ./:/app
+    environment:
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+    ports:
+      - "3001:5174"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: sh -c "npm install && npm start"
+
+volumes:
+  pgdata:
+  pip_cache:
