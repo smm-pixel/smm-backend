@@ -1,6 +1,4 @@
-"""Reports API — delegates to GenerateFinancialReportUseCase.
-Paths: /api/reports/laba-rugi, /neraca, /buku-besar — unchanged.
-"""
+"""Reports API — auth required + GenerateFinancialReportUseCase."""
 from __future__ import annotations
 
 from datetime import date
@@ -9,11 +7,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import API_PREFIX
+from config import API_PREFIX, REPORT_READ_LEVEL
+from dependencies import get_current_user
 from infrastructure.database.connection import get_db
+from infrastructure.database.models import User
 from application.reports.generate_financial_report_use_case import (
     GenerateFinancialReportUseCase,
 )
+from services.jwt_service import require_roles
 
 router = APIRouter(prefix=API_PREFIX)
 
@@ -25,7 +26,11 @@ async def rpt_laba_rugi(
     unit_usaha_id: Optional[str] = None,
     group: Optional[str] = None,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: dict = Depends(require_roles(*REPORT_READ_LEVEL)),
 ):
+    if current_user.role == "pengelola" and current_user.unit_usaha_id:
+        unit_usaha_id = current_user.unit_usaha_id
     uc = GenerateFinancialReportUseCase(session)
     return await uc.laba_rugi(
         unit_usaha_id=unit_usaha_id,
@@ -41,7 +46,11 @@ async def rpt_neraca(
     unit_usaha_id: Optional[str] = None,
     group: Optional[str] = None,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: dict = Depends(require_roles(*REPORT_READ_LEVEL)),
 ):
+    if current_user.role == "pengelola" and current_user.unit_usaha_id:
+        unit_usaha_id = current_user.unit_usaha_id
     uc = GenerateFinancialReportUseCase(session)
     return await uc.neraca(
         unit_usaha_id=unit_usaha_id,
@@ -58,7 +67,11 @@ async def rpt_buku_besar(
     group: Optional[str] = None,
     account_code: Optional[str] = None,
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: dict = Depends(require_roles(*REPORT_READ_LEVEL)),
 ):
+    if current_user.role == "pengelola" and current_user.unit_usaha_id:
+        unit_usaha_id = current_user.unit_usaha_id
     uc = GenerateFinancialReportUseCase(session)
     return await uc.buku_besar(
         unit_usaha_id=unit_usaha_id,

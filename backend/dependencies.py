@@ -1,32 +1,57 @@
-"""Reusable FastAPI dependencies and request-scope helpers."""
-from typing import Optional
-from fastapi import Depends, HTTPException
-from services.jwt_service import get_current_user_payload
-from config import READONLY_ROLES
-from database import db
-from models import User
+"""Reusable FastAPI dependencies — relational AsyncSession auth (no Mongo db)."""
+from __future__ import annotations
 
-async def user_from_payload(payload: dict) -> User:
+from typing import Optional
+
+from fastapi import Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import READONLY_ROLES
+from infrastructure.database.connection import get_db
+from infrastructure.database.models import User
+from services.jwt_service import get_current_user_payload
+
+
+async def get_current_user(
+    payload: dict = Depends(get_current_user_payload),
+    session: AsyncSession = Depends(get_db),
+) -> User:
     uid = payload.get("sub")
-    doc = await db.users.select_one({"id": uid}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=401, detail="User tidak ditemukan")
-    user = User(**doc)
-    if payload.get("session_version", 0) != user.session_version:
-        raise HTTPException(status_code=401, detail="Sesi kedaluwarsa, silakan login kembali")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = await session.get(User, uid)
+    if not user or not user.active:
+        raise HTTPException(status_code=401, detail="User tidak ditemukan atau nonaktif")
     return user
 
-async def scope_unit_for_pengelola(payload: dict, unit_usaha_id: Optional[str]) -> Optional[str]:
+
+async def user_from_payload(
+    payload: dict,
+    session: AsyncSession = Depends(get_db),
+) -> User:
+    return await get_current_user(payload=payload, session=session)
+
+
+async def scope_unit_for_pengelola(
+    payload: dict,
+    unit_usaha_id: Optional[str],
+    session: AsyncSession = Depends(get_db),
+) -> Optional[str]:
     if payload.get("role") == "pengelola":
-        user = await user_from_payload(payload)
+        user = await get_current_user(payload=payload, session=session)
         if not user.unit_usaha_id:
-            raise HTTPException(403, "Pengelola tidak memiliki unit usaha")
+            raise HTTPException(status_code=403, detail="Pengelola tidak memiliki unit usaha")
         return user.unit_usaha_id
     return unit_usaha_id
 
-async def require_password_ready(payload: dict = Depends(get_current_user_payload)):
-    user = await user_from_payload(payload)
-    if user.must_change_password:
+
+async def require_password_ready(
+    user: User = Depends(get_current_user),
+    payload: dict = Depends(get_current_user_payload),
+):
+    # Relational User may not have must_change_password yet — skip if attr missing
+    if getattr(user, "must_change_password", False):
         raise HTTPException(status_code=403, detail="PASSWORD_CHANGE_REQUIRED")
     return payload
 
@@ -34,9 +59,14 @@ async def require_password_ready(payload: dict = Depends(get_current_user_payloa
 def require_not_readonly():
     async def checker(payload: dict = Depends(get_current_user_payload)):
         if payload.get("role") in READONLY_ROLES:
-            raise HTTPException(status_code=403, detail="Role Anda hanya bisa membaca, tidak bisa mengubah data")
+            raise HTTPException(
+                status_code=403,
+                detail="Role Anda hanya bisa membaca, tidak bisa mengubah data",
+            )
         return payload
+
     return checker
+
 
 def fmt_rp(n: float) -> str:
     try:
@@ -44,4 +74,12 @@ def fmt_rp(n: float) -> str:
     except Exception:
         return f"Rp {n}"
 
-__all__ = ["user_from_payload", "scope_unit_for_pengelola", "require_password_ready", "require_not_readonly", "fmt_rp"]
+
+__all__ = [
+    "get_current_user",
+    "user_from_payload",
+    "scope_unit_for_pengelola",
+    "require_password_ready",
+    "require_not_readonly",
+    "fmt_rp",
+]
