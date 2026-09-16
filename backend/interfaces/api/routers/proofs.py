@@ -1,42 +1,29 @@
-"""Upload bukti transaksi → Google Drive (OAuth admin token) + tabel bukti_transaksi.
-Path: POST /api/transactions/{tx_id}/proof — unchanged.
-"""
+"""Upload bukti — auth required, GDrive OAuth admin token, tabel bukti_transaksi."""
 from __future__ import annotations
+
+import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import API_PREFIX
+from dependencies import get_current_user
 from infrastructure.database.connection import get_db
-from infrastructure.database.models import BuktiTransaksi, Transaction
+from infrastructure.database.models import BuktiTransaksi, Transaction, User
 from services import gdrive_service
+from services.jwt_service import require_roles
 
 router = APIRouter(prefix=API_PREFIX)
 
-# Token OAuth admin disimpan di env / tabel legacy oauth_tokens via gdrive_service.
-# Upload memakai refresh_token terpusat — bendahara tidak perlu login Google ulang.
 
-
-async def _get_refresh_token(session: AsyncSession) -> str:
-    """Ambil refresh_token admin. Fallback ke env GDRIVE_REFRESH_TOKEN."""
-    import os
-
+async def _get_refresh_token() -> str:
     env_tok = os.getenv("GDRIVE_REFRESH_TOKEN")
     if env_tok:
         return env_tok
-    # Legacy document store (selama migrasi belum selesai penuh)
-    try:
-        from database import db  # type: ignore
-
-        tok = await db.oauth_tokens.select_one({"provider": "gdrive"}, {"_id": 0})
-        if tok and tok.get("refresh_token"):
-            return tok["refresh_token"]
-    except Exception:
-        pass
     raise HTTPException(
         status_code=503,
-        detail="Google Drive belum terhubung. Admin perlu Hubungkan Drive terlebih dahulu.",
+        detail="Google Drive belum terhubung. Set GDRIVE_REFRESH_TOKEN atau Hubungkan Drive.",
     )
 
 
@@ -45,10 +32,14 @@ async def upload_proof(
     tx_id: str,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: dict = Depends(require_roles("admin", "direktur", "bendahara", "pengelola")),
 ):
     trx = await session.get(Transaction, tx_id)
     if not trx:
         raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    if current_user.role == "pengelola" and trx.unit_usaha_id != current_user.unit_usaha_id:
+        raise HTTPException(status_code=403, detail="Bukan transaksi unit Anda")
 
     existing = (
         await session.execute(
@@ -67,7 +58,7 @@ async def upload_proof(
     if len(data) > 1 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Ukuran file maksimal 1 MB")
 
-    refresh_token = await _get_refresh_token(session)
+    refresh_token = await _get_refresh_token()
     ddmmyyyy = trx.date.strftime("%d%m%Y")
     new_name = f"BUKTI_{ddmmyyyy}_{len(existing) + 1}.{ext}"
     meta = gdrive_service.upload_bytes(refresh_token, data, new_name)
